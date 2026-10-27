@@ -1,0 +1,117 @@
+---
+title: "STAT 236: Bayesian Filtering and Optimized Network-Aware Testing"
+subtitle: "Reproducibility companion for the LaTeX report"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+params:
+  rerun_python: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE,
+                      fig.width=8, fig.height=4.4)
+```
+
+## Data provenance and simulation design
+
+The Haslemere adjacency matrix comes from the original headerless `Kissler_DataS1.csv` (469 participants, three days of five-minute proximity measurements). Individuals are connected if observed within 4 meters at least once. Infection and testing outcomes are **simulated**. The SBM study has three equal-sized blocks, mean expected degree eight, six community ratios, and five independent-edge observation probabilities. Each policy has a maximum of 20 tests per day. See `report.tex` for definitions.
+
+The original four policies are **random**, **degree**, **contact**, and the handcrafted **adaptive** heuristic. The new policies are **opt_filter** (mean-field filter only) and **opt_fitted** (trained infection-risk model plus one-step expected-prevention optimization). The epidemic transmission parameters are fixed by the simulator; only the risk-model regression coefficients are estimated from synthetic labels.
+
+To reproduce from the CSVs already included, leave `rerun_python` false. To regenerate on a computer with Python, the original public proximity CSV and Python requirements installed, set it true and execute the following chunk (the full simulation can be time-consuming):
+
+```{r rerun, eval=params$rerun_python}
+status <- system("python3 fit_risk_model.py --csv data/Kissler_DataS1.csv --train-reps 90 --valid-reps 24")
+stopifnot(status==0)
+status <- system("python3 run_structure_sensitivity.py --reps 30")
+stopifnot(status==0)
+status <- system("python3 run_haslemere_visibility.py --csv data/Kissler_DataS1.csv --reps 30")
+stopifnot(status==0)
+status <- system("python3 run_optimized_experiments.py --csv data/Kissler_DataS1.csv --reps 30")
+stopifnot(status==0)
+status <- system("python3 create_model_based_assets.py")
+stopifnot(status==0)
+```
+
+## Held-out individual risk estimation
+
+The fitted logistic model is trained on **90 independent synthetic epidemic trajectories**, with **24 distinct held-out epidemic trajectories**, never splitting rows from the same outbreak across folds. The logit of the mean-field hidden-state probability is one input, along with observed network and testing-history features. The test labels are simulated hidden infections.
+
+```{r risk}
+risk <- read.csv("results/risk_model_diagnostics.csv")
+knitr::kable(subset(risk,split=="holdout"),digits=4,
+             caption="Predictive diagnostics on held-out eligible person-days")
+coefs <- read.csv("results/risk_model_coefficients.csv")
+knitr::kable(coefs,digits=3,
+             caption="Estimated logistic coefficients, on standardized predictors")
+```
+
+Brier score and log-loss are proper scoring rules for hidden-infection risk; AUC measures ranking. Rows are correlated within epidemics, so the displayed numbers are descriptive and should not be treated as based on independent person-days.
+
+## SBM community structure and missing contacts
+
+```{r sbm}
+sbm <- read.csv("results/optimized_sbm_summary.csv")
+sbmcontrasts <- read.csv("results/optimized_sbm_contrasts.csv")
+sbminteractions <- read.csv("results/optimized_sbm_interactions.csv")
+main_sbm <- subset(sbm,visibility==1 & ratio %in% c(1,12),
+                   select=c(ratio,policy,attack,se_attack))
+main_sbm$attack_percent <- 100*main_sbm$attack
+knitr::kable(main_sbm[order(main_sbm$ratio,main_sbm$policy),],digits=3,
+             caption="Complete-observation SBM policy comparisons")
+```
+
+```{r community-plot}
+comp <- subset(sbmcontrasts, contrast=="opt_fitted - adaptive" & visibility %in% c(.25,1))
+plot(NA, xlim=c(1,12),ylim=100*range(comp$ci_low,comp$ci_high),
+     xlab="Community ratio (within/between)",
+     ylab="Fitted optimizer minus heuristic, percentage points")
+abline(h=0,lty=2,col="gray55")
+for (q in c(.25,1)) {
+ z <- subset(comp,visibility==q)
+ z <- z[order(z$ratio),]
+ col <- if(q==1) "steelblue4" else "darkorange3"
+ lines(z$ratio,100*z$estimate,type="b",pch=if(q==1) 19 else 17,col=col)
+ arrows(z$ratio,100*z$ci_low,z$ratio,100*z$ci_high,
+        code=3,length=.04,angle=90,col=col)
+}
+legend("topright",legend=c("100% observed","25% observed"),
+       col=c("steelblue4","darkorange3"),pch=c(19,17),bty="n")
+```
+
+We evaluate the **incremental** benefit of fitted optimization relative to the handcrafted adaptive heuristic (negative differences favor optimization). The interaction table estimates the difference between this benefit at each community ratio and at ratio 1, paired on identical graph and epidemic innovations.
+
+```{r interactions}
+knitr::kable(subset(sbminteractions, visibility %in% c(.25,1) & ratio %in% c(1,12)),
+             digits=4, caption="Paired interaction in optimizer-versus-heuristic difference")
+```
+
+## Haslemere empirical network and missing edges
+
+```{r haslemere}
+has <- read.csv("results/optimized_haslemere_summary.csv")
+paired <- read.csv("results/optimized_haslemere_contrasts.csv")
+knitr::kable(subset(has,visibility %in% c(.25,.6,1),
+                     select=c(visibility,policy,attack,se_attack)),digits=4,
+             caption="Policy infection rates on the measured Haslemere contact topology")
+```
+
+```{r empirical-plot}
+plot(NA,xlim=c(25,100),ylim=100*range(has$attack),
+     xlab="Observed true contacts (%)",ylab="Ever infected by day 50 (%)")
+for(p in c("contact","adaptive","opt_filter","opt_fitted")) {
+ z <- subset(has,policy==p); z <- z[order(z$visibility),]
+ col <- c(contact="gray45",adaptive="darkorange3",
+          opt_filter="steelblue3",opt_fitted="navy")[p]
+ lines(100*z$visibility,100*z$attack,type="b",pch=19,col=col)
+}
+legend("topleft",legend=c("Contact","Adaptive heuristic","MF optimizer","Fitted optimizer"),
+       col=c("gray45","darkorange3","steelblue3","navy"),lty=1,pch=19,bty="n")
+```
+
+## Interpretation and limitations
+
+The mean-field filter approximates a factorized posterior rather than solving the exact filtering problem on the full stochastic network state space. Training trajectories contain synthetic infection labels; these are never visible to test-allocation decisions. The fitted-risk optimizer solves a **one-day additive surrogate** exactly by selecting the top 20 eligible values. It is not a proof of optimal control over all 50 days. Estimated infection risk can improve without improving policy value because contact missingness, overlap of infectious neighborhoods, and feedback from earlier interventions matter. The study is not a clinical effectiveness or causal evaluation.

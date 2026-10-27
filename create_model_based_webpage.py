@@ -1,0 +1,40 @@
+"""Build self-contained static demonstration page referencing adjacent generated figures."""
+from pathlib import Path
+import pandas as pd
+R=Path(__file__).resolve().parent
+risk=pd.read_csv(R/'results'/'risk_model_diagnostics.csv')
+sbm=pd.read_csv(R/'results'/'optimized_sbm_summary.csv')
+has=pd.read_csv(R/'results'/'optimized_haslemere_summary.csv')
+val=risk[(risk.split=='holdout')&(risk.model=='fitted')].iloc[0]
+def get(df,pol,q,r=None):
+ a=df[(df.policy==pol)&(df.visibility==q)]
+ if r is not None:a=a[a.ratio==r]
+ return 100*float(a.iloc[0].attack)
+html='''<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>STAT 236 · Network-Aware Testing Allocation</title>
+<style>body{margin:0;background:#f4f7fa;color:#173045;font:16px/1.6 system-ui,-apple-system,Segoe UI,sans-serif}header{background:#102d46;color:#f7fbff;padding:65px max(5vw,24px) 50px}header .inner{max-width:1000px;margin:auto}header h1{font-size:clamp(2rem,4.5vw,3.2rem);line-height:1.1;max-width:850px;margin:12px 0}header p{max-width:760px;color:#c9d9e7}header a{color:#9ae7e0}.eyebrow{font-size:12px;letter-spacing:.14em;font-weight:700;text-transform:uppercase;color:#4b9aa6}header .eyebrow{color:#a0dbd5}main{max-width:1000px;margin:35px auto 80px;padding:0 22px}h2{margin-top:40px;font-size:1.55rem;line-height:1.24}h3{font-size:1.15rem}p{max-width:900px}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:14px}.card{background:white;border:1px solid #dce6ef;border-radius:11px;padding:20px;box-shadow:0 3px 12px #152c4210}.num{font-size:2rem;font-weight:750;color:#104975;line-height:1.3}.label{color:#4e6272;font-size:14px}figure{margin:26px 0;padding:16px;background:white;border:1px solid #dce6ef;border-radius:11px}figure img{width:100%;height:auto;object-fit:contain}figcaption{font-size:13px;color:#536b7b}table{width:100%;border-collapse:collapse;background:white}th,td{padding:11px 12px;text-align:left;border-bottom:1px solid #e0e7ee}th{background:#e9f2f5}a.button{display:inline-block;text-decoration:none;background:#007e81;color:white;padding:10px 16px;border-radius:7px;margin:5px 7px 5px 0}.note{border-left:4px solid #d08b37;padding:9px 14px;background:#fff9ed}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:20px}.grid figure{margin:0}.footer{margin-top:50px;color:#5c7080;font-size:13px}</style></head><body>
+<header><div class="inner"><div class="eyebrow">STAT 236 · Fall 2026 · Project demonstration</div><h1>Network-Aware Testing Allocation for Infectious Disease Control</h1><p>How do community structure and incomplete contact information change the value of model-based testing under limited resources?</p><p><a href="report.pdf">Read the research report (PDF)</a> · <a href="analysis.Rmd">Explore the reproducibility notebook</a></p></div></header>
+<main><div class="cards">
+<div class="card"><div class="eyebrow">Training</div><div class="num">90 epidemics</div><div class="label">Independent simulated trajectories for the infection-risk model</div></div>
+<div class="card"><div class="eyebrow">Held-out prediction</div><div class="num">%.3f AUC</div><div class="label">Individual hidden-infection risk, on 24 separate epidemics</div></div>
+<div class="card"><div class="eyebrow">Testing budget</div><div class="num">20/day</div><div class="label">Tests selected after observing the day's routine diagnoses</div></div>
+<div class="card"><div class="eyebrow">Paired evaluation</div><div class="num">30 runs</div><div class="label">Per network scenario, shared epidemic innovations across policies</div></div></div>
+<section><h2>The question</h2><p>Network-informed interventions depend on two different kinds of knowledge: who is likely to be infected, and who might spread infection through social contacts. We compare a fitted-risk, one-step testing optimizer to a filter-only optimizer, a handcrafted adaptive network heuristic, recent-contact prioritization, degree targeting, and random testing. The simulator generates infections on the <em>true</em> network while testing policies see a graph with a controllable fraction of edges removed.</p></section>
+<section><h2>The inference and decision pipeline</h2><div class="cards"><div class="card"><h3>1. Observe</h3><p>Previous diagnoses, test results, test times, and visible contact edges; never hidden infection labels.</p></div><div class="card"><h3>2. Infer</h3><p>Update a mean-field SHCR Bayesian filter and apply a logistic risk model fitted on independent simulated trajectories.</p></div><div class="card"><h3>3. Allocate</h3><p>Select the 20 eligible people with greatest predicted next-day infections prevented by a positive test.</p></div></div><p class="note"><strong>Important:</strong> The objective is an additive, one-day <em>surrogate</em>. Selecting the top scores solves that surrogate exactly; it is not a globally optimal policy over the full epidemic.</p></section>
+<section><h2>What changes with community structure?</h2><figure><img src="figures/optimized_community.png" alt="Difference in infection rates between fitted optimization and adaptive heuristic across community ratios"><figcaption>Paired mean differences with 95%% Monte Carlo intervals; negative values favor the fitted optimizer. A monotonic benefit from stronger communities is not evident.</figcaption></figure></section>
+<section><h2>What changes when contact data are incomplete?</h2><div class="grid"><figure><img src="figures/optimized_sbm_visibility.png" alt="Effect of missing contacts on SBM testing policies"><figcaption>SBM settings: even the fitted optimizer degrades as edges become unobserved.</figcaption></figure><figure><img src="figures/optimized_haslemere_visibility.png" alt="Effect of missing contacts on Haslemere testing policies"><figcaption>Haslemere: the graph is from observed proximity measurements; infection outcomes are simulated.</figcaption></figure></div></section>
+<section><h2>Selected empirical-network comparison</h2><table><thead><tr><th>Policy</th><th>100%% observed edges</th><th>25%% observed edges</th></tr></thead><tbody>
+<tr><td>Recent contact</td><td>%.1f%%</td><td>%.1f%%</td></tr><tr><td>Adaptive heuristic</td><td>%.1f%%</td><td>%.1f%%</td></tr><tr><td>Mean-field optimizer</td><td>%.1f%%</td><td>%.1f%%</td></tr><tr><td>Fitted-risk optimizer</td><td>%.1f%%</td><td>%.1f%%</td></tr></tbody></table>
+<p>Percentages are mean fractions infected by day 50 over 30 paired simulated outbreaks. The fitted optimizer can lower predicted infections relative to contact testing, but does not consistently outperform the existing adaptive heuristic.</p></section>
+<section><h2>Limits and reproducibility</h2><p>Model parameters are assumed rather than fitted to historical infections; the logistic model is fitted only to <em>simulated</em> hidden-state labels. The mean-field approximation ignores dependence among neighbors; tests are immediate, and missing edges are random. The real Haslemere file contains physical proximity, not COVID-19 outcomes. Conclusions describe a model-based comparison, not clinical effectiveness.</p><a class="button" href="report.pdf">Read full PDF</a><a class="button" href="analysis.Rmd">View R Markdown</a><a class="button" href="results/risk_model_diagnostics.csv">Risk diagnostics CSV</a></section>
+<div class="footer">Data reference: Kissler et al., Haslemere supplementary proximity measurements (2017); methods context: Firth et al. (2020), Huang et al. (2022). The earlier internal draft is not treated as a separate source.</div></main></body></html>'''
+html=html.replace('%','%%').replace('%%.3f','%.3f').replace('%%.1f','%.1f')
+html=html % (
+val.auc,
+get(has,'contact',1),get(has,'contact',.25),
+get(has,'adaptive',1),get(has,'adaptive',.25),
+get(has,'opt_filter',1),get(has,'opt_filter',.25),
+get(has,'opt_fitted',1),get(has,'opt_fitted',.25))
+html=html.replace('The earlier internal draft is not treated as a separate source.','').replace('%%','%')
+(R/'index.html').write_text(html,encoding='utf-8')
+print('Wrote demonstration webpage')

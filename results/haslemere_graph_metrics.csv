@@ -1,0 +1,2 @@
+data_rows,time_points,nodes,contact_threshold_m,unique_edges,mean_degree,median_degree,isolates,largest_component
+102831,576,469,4.0,1262,5.381663113006397,4.0,57,405

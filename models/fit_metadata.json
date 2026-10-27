@@ -1,0 +1,21 @@
+{
+  "seed": 339236,
+  "train_trajectories": 90,
+  "holdout_trajectories": 24,
+  "train_rows": 630938,
+  "holdout_rows": 167146,
+  "features": [
+    "filter_logit_H",
+    "log1p_recent_contacts",
+    "log1p_twohop_per_degree",
+    "log1p_observed_degree",
+    "day_scaled",
+    "log1p_days_since_test",
+    "filter_prob_susceptible"
+  ],
+  "policies_in_training": [
+    "random",
+    "contact"
+  ],
+  "comment": "Hidden labels used only for synthetic training/holdout; no observed disease outcomes."
+}

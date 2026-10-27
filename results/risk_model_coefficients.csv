@@ -1,0 +1,8 @@
+feature,coef_standardized
+filter_logit_H,0.3197357379795473
+log1p_recent_contacts,0.2081596316872266
+log1p_twohop_per_degree,0.21090131848688476
+log1p_observed_degree,0.3419369726992718
+day_scaled,-0.3047932575506854
+log1p_days_since_test,0.20698985090552352
+filter_prob_susceptible,0.19124176347988997
