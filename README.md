@@ -1,8 +1,32 @@
 # STAT 236 - Network-aware testing on temporal and static networks
 
-## Current project (October 2026)
+## Primary 50-day extension (NEW)
 
-**Primary empirical-network experiment: the measured three-day Haslemere sequence at five-minute resolution.** The true contact network changes for each of 576 observed slots, with 17,363 qualifying observations within four meters. Infections are **simulated**, and testing allocation acts on only past observed contacts. Five tests are selected at each of four daytime rounds (20 tests/day), using approximate SHCR Bayesian filtering and a separately fitted temporal infection-risk estimator. The four standard heuristic/random baselines and two optimizers remain. The temporal experiment compares a recency-weighted optimization score to a cumulative **past-only** contact-frequency score. No policy uses contact observations from future time slots.
+This version implements **a dynamic 50-day Haslemere contact process**, *not* an observed 50-day contact dataset. The source has only three measured daytime sequences (192 five-minute slots each). The simulator keeps those exact sequences on Days 1, 2, and 3, then draws an entire source day at random with replacement for each Day 4 through Day 50. The resulting 9,600 five-minute daytime transmission steps preserve observed within-day ordering. A 96-step (8-hour) overnight gap is included for recovery/diagnosis but has **no modeled transmission**. Random sampled daily block paths are paired across testing policies, held out from decisions until contact observations arrive.
+
+The underlying disease model remains **SHCR** (S susceptible, H hidden infectious, C confirmed/isolated, R recovered). **No exposed E state was added**. Its immediate S-to-H step and fixed five-minute hazard are modeling simplifications. All future contacts, infection states, and test outcomes are simulated; none are claims about observed infections. A permanent missing-dyad mask applies only to the network available for filtering/testing decisions.
+
+The 50-day extension uses: 20 tests/day split into four five-test daytime rounds, 25 initially hidden plus four confirmed individuals, daily baseline diagnosis 0.14 and recovery 0.12, five-minute contact hazard 0.060, test sensitivity 0.90, specificity 1. The 12-hour recency e-folding time is different from the prior three-day sensitivity setting. These are **not empirically estimated disease parameters**. A fresh logistic risk model is trained on 24 separate 50-day synthetic epidemics and held out on another 10 trajectories; 12 matched testing-policy replicates are reported at each of full versus 50% contact visibility. Results and code are in `results/extended_*`, `models/extended_temporal_risk_model.joblib`, and `figures/extended_*`.
+
+```bash
+python3 -m pip install -r requirements.txt
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python3 test_extended_haslemere.py
+# To reproduce exactly the released extended results from the bundled fitted model:
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python3 extended_temporal_haslemere.py --skip-fit --days 50 --reps 12
+# Or fit the extended model again before evaluation:
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python3 extended_temporal_haslemere.py --days 50 --train 24 --heldout 10 --reps 12
+python3 create_extended_assets.py
+python3 create_extended_webpage.py
+pdflatex report.tex && biber report && pdflatex report.tex && pdflatex report.tex
+```
+
+**Interpretation:** Day-block resampling permits long-run simulated epidemic outcomes but cannot add new observed contacts, novel ties, seasonal changes, or unobserved overnight edges. The three-day empirical record is a small, nonrandom convenience sample. The original measured-only three-day results remain in the appendix and `temporal_haslemere.py`; static SBM experiments remain unchanged. The compiled manuscript uses `references.bib` (BibLaTeX/Biber).
+
+---
+
+## Retained three-day sensitivity (original temporal analysis)
+
+**Earlier measured-only empirical-network experiment: the measured three-day Haslemere sequence at five-minute resolution.** The true contact network changes for each of 576 observed slots, with 17,363 qualifying observations within four meters. Infections are **simulated**, and testing allocation acts on only past observed contacts. Five tests are selected at each of four daytime rounds (20 tests/day), using approximate SHCR Bayesian filtering and a separately fitted temporal infection-risk estimator. The four standard heuristic/random baselines and two optimizers remain. The temporal experiment compares a recency-weighted optimization score to a cumulative **past-only** contact-frequency score. No policy uses contact observations from future time slots.
 
 **Complementary controlled experiment:** 50-day **static SBM** networks still examine community structure and missing edges (30 paired replications per condition). Previous static 50-day Haslemere-graph results remain in the source package as a historical static-network sensitivity experiment, and are **not** interpreted as a temporal model.
 
@@ -17,7 +41,7 @@
 - `figures/temporal_haslemere_*.png`: plots for the measured time-varying contact network.
 - `report.tex`, `report.pdf`, `analysis.Rmd`, and `index.html`: updated paper, source, analysis notebook, and demonstration site.
 
-### Reproduce the new temporal experiment
+### Reproduce the earlier three-day temporal experiment
 
 ```bash
 python3 -m pip install -r requirements.txt
