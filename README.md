@@ -1,6 +1,46 @@
-# STAT 236 — Network-aware testing allocation with probabilistic inference
+# STAT 236 - Network-aware testing on temporal and static networks
 
-This is the updated project with a **factorized Bayesian SHCR filter**, **logistic infection-risk estimation from separate simulated epidemics**, and **budget-constrained one-step optimized testing**. It retains the original adaptive network heuristic and random, contact, and degree testing as four baseline methods. An additional filter-only optimizer is an ablation of risk estimation.
+## Current project (October 2026)
+
+**Primary empirical-network experiment: the measured three-day Haslemere sequence at five-minute resolution.** The true contact network changes for each of 576 observed slots, with 17,363 qualifying observations within four meters. Infections are **simulated**, and testing allocation acts on only past observed contacts. Five tests are selected at each of four daytime rounds (20 tests/day), using approximate SHCR Bayesian filtering and a separately fitted temporal infection-risk estimator. The four standard heuristic/random baselines and two optimizers remain. The temporal experiment compares a recency-weighted optimization score to a cumulative **past-only** contact-frequency score. No policy uses contact observations from future time slots.
+
+**Complementary controlled experiment:** 50-day **static SBM** networks still examine community structure and missing edges (30 paired replications per condition). Previous static 50-day Haslemere-graph results remain in the source package as a historical static-network sensitivity experiment, and are **not** interpreted as a temporal model.
+
+### Fresh files for the temporal experiment
+
+- `temporal_haslemere.py`: reads headerless `Kissler_DataS1.csv`, constructs all 576 time-stamped contact matrices, carries a time-dependent SHCR simulator, mean-field filter, fitted logistic risk policy, and causal history-based allocation.
+- `test_temporal_haslemere.py`: fast tests for contact totals, Bayes updates, posterior normalization, random-policy invariance to missing observed contacts, budget compliance, and counting initial confirmed cases.
+- `create_temporal_webpage.py`: regenerates the demonstration page from executed CSV results.
+- `data/Kissler_DataS1.csv`: the public CSV supplied for the project, included so the package is self-contained (source: https://github.com/skissler/haslemere).
+- `models/temporal_risk_model.joblib` and `results/temporal_risk_*.csv`: temporal-specific fitted logistic model trained on 60 separate simulated epidemics, evaluated on 16 held-out episodes. This is independent of the earlier static fitted model.
+- `results/temporal_batch_*.csv`, `results/temporal_haslemere_*.csv`: 15 paired, independent evaluation replicates per observation level; **reported 95% Monte Carlo intervals are exploratory** given this replication count. The full benchmark is not claiming 30 temporal replications.
+- `figures/temporal_haslemere_*.png`: plots for the measured time-varying contact network.
+- `report.tex`, `report.pdf`, `analysis.Rmd`, and `index.html`: updated paper, source, analysis notebook, and demonstration site.
+
+### Reproduce the new temporal experiment
+
+```bash
+python3 -m pip install -r requirements.txt
+python3 test_temporal_haslemere.py
+# Refit and run; larger runs can be slow depending on BLAS settings and hardware.
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python3 temporal_haslemere.py --train 60 --heldout 16 --reps 15
+# Or use the shipped fitted model to run 15 deterministic paired reps:
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python3 temporal_haslemere.py --skip-fit --reps 15
+python3 create_temporal_webpage.py
+pdflatex -interaction=nonstopmode report.tex
+pdflatex -interaction=nonstopmode report.tex
+```
+
+For smaller per-process jobs, use `--skip-fit --batch-start 0 --batch-count 3` and similarly for starts 3,6,9,12, followed by `--aggregate-batches`. The aggregation command reads every `results/temporal_batch_*.csv` and checks duplicate cells; **delete old batch files before changing model parameters**. To extend to 30 replications, add starts 15,18,21,24,27, then reaggregate. Each paired replicate uses the same initial infection set, uniform transmission innovations, and nested missing-dyad masks across policies and observation settings.
+
+**Important assumptions:** Transmission hazard 0.060 per five-minute qualifying encounter, 25 initially hidden and four confirmed infections, daily recovery 0.12 and routine diagnosis 0.14 converted to five-minute probabilities, sensitivity 0.90, perfect specificity, instantaneous isolation after positive testing, no modeled transmission during the eight unrecorded nighttime hours, and fixed measured movement despite simulated isolation. These are not clinical estimates. No observed infection outcomes are in Haslemere. The three-day experiment targets infections during observation rather than long-run epidemic final size.
+
+---
+
+## Existing static-network studies (retained for reproducibility)
+
+
+The earlier static-network experiment has a **factorized Bayesian SHCR filter**, **logistic infection-risk estimation from separate simulated epidemics**, and **budget-constrained one-step optimized testing**. It retains the original adaptive network heuristic and random, contact, and degree testing as four baseline methods. An additional filter-only optimizer is an ablation of risk estimation.
 
 **Main deliverables**
 
@@ -18,7 +58,7 @@ This is the updated project with a **factorized Bayesian SHCR filter**, **logist
 
 ## Run from a clean environment
 
-Python 3.10+ and the packages in `requirements.txt` are required. The original public **headerless** Haslemere proximity source file is not repackaged: copy your `Kissler_DataS1.csv` from https://github.com/skissler/haslemere into `data/Kissler_DataS1.csv`. This is the **only external data input**; the main ZIP contains all saved simulation results and fits.
+Python 3.10+ and the packages in `requirements.txt` are required. The original public **headerless** Haslemere proximity source file is now packaged: copy your `Kissler_DataS1.csv` from https://github.com/skissler/haslemere into `data/Kissler_DataS1.csv`. This is the **only external data input**; the ZIP contains the raw public CSV, saved simulated results, and fits.
 
 ```bash
 python3 -m pip install -r requirements.txt

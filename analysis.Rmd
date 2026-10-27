@@ -17,9 +17,9 @@ knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE,
 
 ## Data provenance and simulation design
 
-The Haslemere adjacency matrix comes from the original headerless `Kissler_DataS1.csv` (469 participants, three days of five-minute proximity measurements). Individuals are connected if observed within 4 meters at least once. Infection and testing outcomes are **simulated**. The SBM study has three equal-sized blocks, mean expected degree eight, six community ratios, and five independent-edge observation probabilities. Each policy has a maximum of 20 tests per day. See `report.tex` for definitions.
+The static sensitivity experiment in this subsection aggregates the original headerless `Kissler_DataS1.csv` (469 participants, three days of five-minute proximity measurements). For this *static sensitivity experiment only*, individuals are connected if observed within 4 meters at least once. The primary three-day Haslemere experiment below instead retains the entire measured five-minute sequence. Infection and testing outcomes are **simulated**. The SBM study has three equal-sized blocks, mean expected degree eight, six community ratios, and five independent-edge observation probabilities. Each policy has a maximum of 20 tests per day. See `report.tex` for definitions.
 
-The original four policies are **random**, **degree**, **contact**, and the handcrafted **adaptive** heuristic. The new policies are **opt_filter** (mean-field filter only) and **opt_fitted** (trained infection-risk model plus one-step expected-prevention optimization). The epidemic transmission parameters are fixed by the simulator; only the risk-model regression coefficients are estimated from synthetic labels.
+In the legacy static-network experiments, the original four policies are **random**, **degree**, **contact**, and the handcrafted **adaptive** heuristic. The new policies are **opt_filter** (mean-field filter only) and **opt_fitted** (trained infection-risk model plus one-step expected-prevention optimization). The epidemic transmission parameters are fixed by the simulator; only the risk-model regression coefficients are estimated from synthetic labels.
 
 To reproduce from the CSVs already included, leave `rerun_python` false. To regenerate on a computer with Python, the original public proximity CSV and Python requirements installed, set it true and execute the following chunk (the full simulation can be time-consuming):
 
@@ -115,3 +115,42 @@ legend("topleft",legend=c("Contact","Adaptive heuristic","MF optimizer","Fitted 
 ## Interpretation and limitations
 
 The mean-field filter approximates a factorized posterior rather than solving the exact filtering problem on the full stochastic network state space. Training trajectories contain synthetic infection labels; these are never visible to test-allocation decisions. The fitted-risk optimizer solves a **one-day additive surrogate** exactly by selecting the top 20 eligible values. It is not a proof of optimal control over all 50 days. Estimated infection risk can improve without improving policy value because contact missingness, overlap of infectious neighborhoods, and feedback from earlier interventions matter. The study is not a clinical effectiveness or causal evaluation.
+
+## Primary measured network: three-day five-minute Haslemere sequence
+
+The new experiment **does not replay a static 50-day Haslemere graph**. It uses each of the 576 recorded five-minute adjacency matrices in order. The true network varies in time; the policies may observe only a fixed random fraction of dyads. Epidemic trajectories and testing outcomes are simulated. The original static SBM experiments above remain a separate controlled structure sensitivity analysis.
+
+At 7am, 11am, 3pm, and 7pm, screening chooses at most five people (20 tests per recorded day). Prior observed five-minute contacts enter recency and cumulative-history allocation policies. The cumulative-history rule aggregates only contacts observed **before** the decision and is not an oracle aggregate of all three days. Routine diagnosis and recovery continue overnight, while transmission is omitted during unrecorded nighttime hours. Initially, 25 individuals are hidden infectious and four more are already confirmed and isolated.
+
+A **separate** logistic risk model for the temporal experiment is fitted on 60 independent simulated trajectories and evaluated on 16 held-out trajectories. The 15 paired evaluation replications are independent of the training and holdout trajectories. These are assumptions and synthetic labels, not estimates of clinical COVID-19 rates.
+
+```{r temporal-diagnostics}
+temporal_diagnostics <- read.csv('results/temporal_risk_diagnostics.csv')
+knitr::kable(subset(temporal_diagnostics, split=='heldout'), digits=4,
+             caption='Temporal risk estimation: held-out simulated episodes')
+```
+
+```{r temporal-comparisons}
+temp <- read.csv('results/temporal_haslemere_summary.csv')
+comp <- read.csv('results/temporal_haslemere_contrasts.csv')
+knitr::kable(subset(temp, visibility==1, select=c(policy,attack,new_infections,tests)),
+             digits=4, caption='Three recorded days, full network, 15 paired simulation replicates')
+knitr::kable(subset(comp, visibility==1),digits=3,
+             caption='Paired temporal fitted optimizer contrasts, percentage points')
+```
+
+```{r temporal-visibility}
+pol <- c('random','contact','adaptive','opt_filter','opt_temporal_fitted','opt_cumulative_fitted')
+plot(NA,xlim=c(25,100),ylim=100*range(temp$attack),
+     xlab='Observed contact pairs (%)',ylab='Ever infected (%)',
+     main='Haslemere: measured time-varying contacts, simulated infections')
+for (i in seq_along(pol)) {
+  x <- subset(temp, policy==pol[i]);x <- x[order(x$visibility),]
+  lines(100*x$visibility,100*x$attack,type='b',pch=i,col=i)
+}
+legend('topright',legend=pol,lty=1,pch=seq_along(pol),col=seq_along(pol),cex=.6,bty='n')
+```
+
+**Regeneration:** To reproduce the new temporal analysis from the supplied `data/Kissler_DataS1.csv`, run `python3 temporal_haslemere.py --train 60 --heldout 16 --reps 15`. A pre-fitted temporal model and executed result tables are included. To avoid expensive single-process runs on slower computers, the script supports `--skip-fit --batch-start START --batch-count 3` for disjoint batches, followed by `--aggregate-batches`. Any existing saved batches should be deleted before changing simulation parameters.
+
+Interpretation: under this selected scenario, recency-weighted testing did not consistently outperform testing based on past cumulative contact frequency. Neither strategy observes future contacts. Results are constrained by three recorded days, short disease duration relative to an epidemic, and the assumed overnight-contact treatment.

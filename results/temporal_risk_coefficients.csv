@@ -1,0 +1,9 @@
+feature,coefficient_standardized
+filter_logit_h,0.7470565522676795
+log_recent_confirmed,0.10460949597572942
+log_recent_twohop,0.04649055338335183
+log_recent_degree,-0.0024798439891452915
+log_cumulative_degree,-0.02665115483058962
+filter_susceptible,0.395743935235519
+day_fraction,0.05932348058974598
+time_since_test,0.06951366804496738
