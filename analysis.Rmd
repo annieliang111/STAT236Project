@@ -70,7 +70,7 @@ status <- system('OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python3 test_extended
 stopifnot(status==0)
 status <- system('OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python3 extended_temporal_haslemere.py --days 50 --train 24 --heldout 10 --reps 12')
 stopifnot(status==0)
-status <- system('python3 create_extended_assets.py && python3 create_extended_webpage.py')
+status <- system('python3 create_extended_assets.py')
 stopifnot(status==0)
 ```
 

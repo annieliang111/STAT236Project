@@ -1,122 +1,223 @@
-# STAT 236 - Network-aware testing on temporal and static networks
+# Network-Aware Testing Allocation for Infectious Disease Control Under Limited Resources
 
-## Primary 50-day extension (NEW)
+**The Role of Community Structure and Incomplete Contact Information**  
+STAT 236 course project (Fall 2026)  
+**Authors:** Yinpeng Cai, Aniket Jain, Annie Liang, Zidan Luo
 
-This version implements **a dynamic 50-day Haslemere contact process**, *not* an observed 50-day contact dataset. The source has only three measured daytime sequences (192 five-minute slots each). The simulator keeps those exact sequences on Days 1, 2, and 3, then draws an entire source day at random with replacement for each Day 4 through Day 50. The resulting 9,600 five-minute daytime transmission steps preserve observed within-day ordering. A 96-step (8-hour) overnight gap is included for recovery/diagnosis but has **no modeled transmission**. Random sampled daily block paths are paired across testing policies, held out from decisions until contact observations arrive.
+[Project repository](https://github.com/annieliang111/STAT236Project)
 
-The underlying disease model remains **SHCR** (S susceptible, H hidden infectious, C confirmed/isolated, R recovered). **No exposed E state was added**. Its immediate S-to-H step and fixed five-minute hazard are modeling simplifications. All future contacts, infection states, and test outcomes are simulated; none are claims about observed infections. A permanent missing-dyad mask applies only to the network available for filtering/testing decisions.
+## Overview
 
-The 50-day extension uses: 20 tests/day split into four five-test daytime rounds, 25 initially hidden plus four confirmed individuals, daily baseline diagnosis 0.14 and recovery 0.12, five-minute contact hazard 0.060, test sensitivity 0.90, specificity 1. The 12-hour recency e-folding time is different from the prior three-day sensitivity setting. These are **not empirically estimated disease parameters**. A fresh logistic risk model is trained on 24 separate 50-day synthetic epidemics and held out on another 10 trajectories; 12 matched testing-policy replicates are reported at each of full versus 50% contact visibility. Results and code are in `results/extended_*`, `models/extended_temporal_risk_model.joblib`, and `figures/extended_*`.
+Under a limited testing budget, **whom should we test, and when**, when infections are hidden and contact-network information is incomplete? This project studies how **community structure**, **missing observed contacts**, and **temporal contact history** influence network-aware testing allocation.
+
+We simulate epidemics using a susceptible--hidden infectious--confirmed--recovered (**SHCR**) model and compare simple testing rules with a model-based policy that:
+
+1. Estimates each individual's hidden-infection probability using an approximate Bayesian (mean-field) filter.
+2. Refines that estimate using an `L2`-regularized logistic regression trained on *separate simulated epidemics*.
+3. Ranks eligible people by an additive approximation to the **immediate infections their testing could prevent**, then selects the highest-scoring individuals within the testing budget.
+
+The optimization **exactly solves its one-step additive surrogate**, not the globally optimal 50-day testing problem. Policies have access to observed contacts, diagnoses, and their own earlier test results, **not** the simulator's true hidden infection states or future contacts.
+
+The two primary experimental settings are:
+
+| Setting | Network | Main question |
+| --- | --- | --- |
+| **Controlled SBM** | Static stochastic block-model networks | How do community separation and incomplete edge observation affect testing performance? |
+| **Extended Haslemere** | Five-minute temporal contacts, simulated over 50 days | Does emphasizing recent contacts improve testing allocation over using cumulative past contact histories? |
+
+The original three-day, measured-contact-only Haslemere simulation remains a **supplementary sensitivity experiment** (Appendix E of the report).
+
+## Data and network construction
+
+### Haslemere contact data
+
+The public [Haslemere / BBC Pandemic dataset](https://github.com/skissler/haslemere) contains **102,831 pairwise distance records** involving **469 volunteers** across three consecutive days (12--14 October 2017). Measurements cover **7:00 a.m. to 11:00 p.m.**, at five-minute intervals: **192 slots/day**, or **576 observed slots** in total. We create an edge when two participants are recorded within **4 m** of each other, yielding **17,363 qualifying proximity records** across **1,262 distinct pairs**.
+
+The data provide *proximity measurements*, not observed infections or a complete population contact network. Contacts with nonparticipants and overnight interactions are missing.
+
+**Fifty-day temporal extension:** Days **1--3** use their original observed sequences. For every simulated day **4--50**, we sample one of the three complete observed daytime sequences uniformly with replacement. We preserve the original order of the 192 five-minute slots within the selected day. This generates **9,600 daytime simulation slots** across 50 days; the eight-hour overnight period allows diagnosis and recovery but has **no modeled transmission**. Sampled future day-blocks are matched across testing policies and are not revealed to a policy in advance.
+
+**Days 4--50 are simulated, not newly observed Haslemere data.** The resampling model cannot create new social ties, capture long-term behavior change, or reconstruct unobserved nighttime contacts.
+
+### Synthetic stochastic block-model networks
+
+Each SBM network contains **180 people in three equally sized communities**. Edges are drawn independently conditional on community membership. The within-community probability `p_in` and between-community probability `p_out` are chosen so the expected degree is **8** while the community-separation ratio `r = p_in / p_out` varies over **1, 1.5, 2, 4, 8, 12**.
+
+For incomplete observation, each existing network edge is retained for the testing policy with probability `q`; the static study uses **q = 0.25, 0.50, 0.60, 0.75, 1.00**. For temporal Haslemere, a missing-dyad mask is held fixed across time and we evaluate **50% and 100%** contact visibility in the main 50-day experiment. In every case, the simulator transmits disease over the *unthinned simulated network*, while the policy sees only the retained edges.
+
+## Epidemic model and testing strategies
+
+All infections, diagnoses, screening results, and disease outcomes are **simulated**. We use four states: susceptible (`S`), hidden infectious (`H`), confirmed/isolated (`C`), and removed/recovered (`R`). There is **no exposed (`E`) state**: newly infected people immediately enter `H`, an explicit biological simplification. Positive screening tests immediately isolate detected hidden-infectious people, preventing their subsequent transmission.
+
+| Assumption | Static SBM | Extended temporal Haslemere |
+| --- | --- | --- |
+| Horizon | 50 days | 50 days; five-minute daytime transmission |
+| Initial conditions | 5 hidden infections | 25 hidden + 4 confirmed cases |
+| Transmission hazard | `tau = 0.055` per infectious neighbor per day | `tau5 = 0.060` per five-minute infectious contact |
+| Spontaneous diagnosis | `delta = 0.025` per day | `delta = 0.14` per day, converted to slot probabilities |
+| Recovery | `gamma = 0.12` per day | `gamma = 0.12` per day, converted to slot probabilities |
+| Screening | 20 tests/day starting Day 8 | Four rounds/day, up to five tests/round (20/day) |
+| Retesting | Five-day cooldown | 192 previously recorded slots cooldown |
+| Test performance | Sensitivity 0.90; specificity 1 | Sensitivity 0.90; specificity 1 |
+
+These epidemiological values are **fixed modeling assumptions**, **not estimates calibrated from clinical or Haslemere infection records**. The per-day and per-five-minute transmission hazards have different time units.
+
+We compare **no testing**, **random selection**, **degree-based targeting**, **recent confirmed-case contact targeting**, a **hand-designed adaptive heuristic** (recent one-hop confirmed-case exposure, two-hop exposure, and degree), **mean-field-risk optimization**, and **fitted-risk optimization**. In the extended Haslemere experiment, two fitted-risk optimizers use the *same* risk model and objective but different past-only proxies for upcoming contacts:
+
+- **Recency-weighted:** older observed contacts receive exponentially decreasing weight (12-hour e-folding time).
+- **Cumulative-history:** every previously observed contact receives equal weight; the rate is normalized by the number of recorded slots.
+
+**Both** use the *same genuinely time-varying transmission network*. The comparison tests the value of the **contact-history summary used in allocation**, not temporal transmission versus a fixed static transmission network.
+
+## Experimental design
+
+| Evaluation | Static SBM | Extended Haslemere |
+| --- | ---: | ---: |
+| Risk model training epidemics | 90 | 24 |
+| Held-out risk-evaluation epidemics | 24 | 10 |
+| Paired policy-evaluation epidemics | 30 per SBM condition | 12 per visibility setting |
+| Main observation settings | 25--100% of true edges | 50% and 100% of observed dyads |
+
+The primary policy outcome is the **percentage ever infected by Day 50**, including initial infections. **New infections** exclude those initially infected; fractional numbers in result tables are averages across simulated epidemics. Policies are compared with matched initial conditions, network/observation draws, and underlying epidemic random innovations. Their realized epidemics can diverge because the policies make different testing decisions.
+
+Paired 95% **Monte Carlo intervals** reflect variability across simulated epidemic replications **conditional on the specified simulation model**. They are not confidence intervals for real-world intervention effects.
+
+## Main results
+
+### Hidden-infection prediction on held-out simulations
+
+| Setting | Estimator | Brier score (lower is better) | Log loss (lower is better) | AUC (higher is better) |
+| --- | --- | ---: | ---: | ---: |
+| Static-network risk evaluation | Mean-field filter | 0.0476 | 0.218 | 0.691 |
+| Static-network risk evaluation | Fitted logistic model | **0.0455** | **0.181** | **0.736** |
+| Extended Haslemere risk evaluation | Mean-field filter | 0.0239 | 0.0876 | 0.875 |
+| Extended Haslemere risk evaluation | Fitted logistic model | **0.0139** | **0.0591** | **0.898** |
+
+The fitted models improve descriptive hidden-infection prediction. Better prediction **does not automatically imply** better decisions or fewer infections.
+
+### Static SBM: community structure and incomplete observation
+
+Mean ever infected by Day 50, **complete network observation** (30 paired epidemics per condition):
+
+| Testing policy | `r = 1` | `r = 12` |
+| --- | ---: | ---: |
+| Random | 46.7% | 44.8% |
+| Degree | 36.5% | 34.1% |
+| Recent confirmed contacts | 37.9% | 31.3% |
+| Adaptive heuristic | 35.0% | 30.4% |
+| Mean-field optimizer | 38.1% | 36.3% |
+| **Fitted-risk optimizer** | **32.6%** | **30.0%** |
+
+The fitted optimizer has the lowest mean infection percentage in these two displayed conditions, but its paired advantage over the adaptive heuristic is not clearly resolved by Monte Carlo uncertainty, nor does its relative advantage increase monotonically with community separation. Reducing edge visibility generally worsens outcomes for network-based policies; it can also **reverse their ranking** in individual settings. Thus, neither fitted optimization nor the adaptive heuristic is shown to be systematically more robust to incomplete contacts.
+
+### Extended 50-day dynamic Haslemere
+
+Mean percentage ever infected by Day 50, **100% observed dyads**, across **12 paired epidemics**:
+
+| Testing policy | Ever infected | Mean new infections | Mean tests used |
+| --- | ---: | ---: | ---: |
+| No testing | 39.98% | 158.5 | 0 |
+| Random | 35.70% | 138.4 | 1,000 |
+| Degree | 34.84% | 134.4 | 1,000 |
+| Recent confirmed contacts | 24.70% | 86.8 | 1,000 |
+| Adaptive heuristic | 25.69% | 91.5 | 1,000 |
+| Mean-field optimizer | 28.70% | 105.6 | 1,000 |
+| **Recency-weighted fitted optimizer** | **22.87%** | **78.2** | **1,000** |
+| **Cumulative-history fitted optimizer** | **22.76%** | **77.8** | **1,000** |
+
+The paired recency-minus-cumulative difference under full observation is **+0.11 percentage points** (95% MC interval **[-1.52, +1.73]**), giving no clear advantage to recency weighting. The recency-weighted fitted optimizer reduces the mean infection percentage by **12.83 percentage points** relative to random testing. Its advantage over the adaptive heuristic is less conclusive.
+
+Under **50% dyad visibility**, the recency-weighted and cumulative-history fitted optimizers yield **27.27%** and **25.36%** ever infected, respectively (adaptive heuristic: **25.76%**). The paired recency-minus-cumulative difference is **+1.92 percentage points** (95% MC interval **[+0.15, +3.69]**). This result is exploratory, given the 12 replications and the assumed daily-block resampling process; it does not establish general superiority of cumulative histories outside this setup.
+
+## Reproducing the experiments
+
+Requirements: **Python 3.10+**, the packages in `requirements.txt`, and the public **headerless** Haslemere file at `data/Kissler_DataS1.csv`. The supplied project bundle includes this CSV; otherwise obtain it from the [original data repository](https://github.com/skissler/haslemere).
+
+Run commands **from the project root**. Limiting BLAS threads can help keep resource usage predictable.
+
+### Primary: extended 50-day Haslemere
 
 ```bash
 python3 -m pip install -r requirements.txt
 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python3 test_extended_haslemere.py
-# To reproduce exactly the released extended results from the bundled fitted model:
+
+# Re-evaluate using the supplied fitted risk model:
 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python3 extended_temporal_haslemere.py --skip-fit --days 50 --reps 12
-# Or fit the extended model again before evaluation:
+
+# Alternatively, refit on 24 training and 10 held-out trajectories before evaluation:
 OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python3 extended_temporal_haslemere.py --days 50 --train 24 --heldout 10 --reps 12
+
+# Regenerate extended result tables and figures from saved outputs:
 python3 create_extended_assets.py
-python3 create_extended_webpage.py
-pdflatex report.tex && biber report && pdflatex report.tex && pdflatex report.tex
 ```
 
-**Interpretation:** Day-block resampling permits long-run simulated epidemic outcomes but cannot add new observed contacts, novel ties, seasonal changes, or unobserved overnight edges. The three-day empirical record is a small, nonrandom convenience sample. The original measured-only three-day results remain in the appendix and `temporal_haslemere.py`; static SBM experiments remain unchanged. The compiled manuscript uses `references.bib` (BibLaTeX/Biber).
+Key saved artifacts include `models/extended_temporal_risk_model.joblib`, `results/extended_haslemere_*.csv`, `results/extended_risk_*.csv`, and `figures/extended_haslemere_visibility.png`.
 
----
-
-## Retained three-day sensitivity (original temporal analysis)
-
-**Earlier measured-only empirical-network experiment: the measured three-day Haslemere sequence at five-minute resolution.** The true contact network changes for each of 576 observed slots, with 17,363 qualifying observations within four meters. Infections are **simulated**, and testing allocation acts on only past observed contacts. Five tests are selected at each of four daytime rounds (20 tests/day), using approximate SHCR Bayesian filtering and a separately fitted temporal infection-risk estimator. The four standard heuristic/random baselines and two optimizers remain. The temporal experiment compares a recency-weighted optimization score to a cumulative **past-only** contact-frequency score. No policy uses contact observations from future time slots.
-
-**Complementary controlled experiment:** 50-day **static SBM** networks still examine community structure and missing edges (30 paired replications per condition). Previous static 50-day Haslemere-graph results remain in the source package as a historical static-network sensitivity experiment, and are **not** interpreted as a temporal model.
-
-### Fresh files for the temporal experiment
-
-- `temporal_haslemere.py`: reads headerless `Kissler_DataS1.csv`, constructs all 576 time-stamped contact matrices, carries a time-dependent SHCR simulator, mean-field filter, fitted logistic risk policy, and causal history-based allocation.
-- `test_temporal_haslemere.py`: fast tests for contact totals, Bayes updates, posterior normalization, random-policy invariance to missing observed contacts, budget compliance, and counting initial confirmed cases.
-- `create_temporal_webpage.py`: regenerates the demonstration page from executed CSV results.
-- `data/Kissler_DataS1.csv`: the public CSV supplied for the project, included so the package is self-contained (source: https://github.com/skissler/haslemere).
-- `models/temporal_risk_model.joblib` and `results/temporal_risk_*.csv`: temporal-specific fitted logistic model trained on 60 separate simulated epidemics, evaluated on 16 held-out episodes. This is independent of the earlier static fitted model.
-- `results/temporal_batch_*.csv`, `results/temporal_haslemere_*.csv`: 15 paired, independent evaluation replicates per observation level; **reported 95% Monte Carlo intervals are exploratory** given this replication count. The full benchmark is not claiming 30 temporal replications.
-- `figures/temporal_haslemere_*.png`: plots for the measured time-varying contact network.
-- `report.tex`, `report.pdf`, `analysis.Rmd`, and `index.html`: updated paper, source, analysis notebook, and demonstration site.
-
-### Reproduce the earlier three-day temporal experiment
+### Primary: static SBM experiments
 
 ```bash
-python3 -m pip install -r requirements.txt
-python3 test_temporal_haslemere.py
-# Refit and run; larger runs can be slow depending on BLAS settings and hardware.
-OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python3 temporal_haslemere.py --train 60 --heldout 16 --reps 15
-# Or use the shipped fitted model to run 15 deterministic paired reps:
-OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python3 temporal_haslemere.py --skip-fit --reps 15
-python3 create_temporal_webpage.py
-pdflatex -interaction=nonstopmode report.tex
-pdflatex -interaction=nonstopmode report.tex
-```
-
-For smaller per-process jobs, use `--skip-fit --batch-start 0 --batch-count 3` and similarly for starts 3,6,9,12, followed by `--aggregate-batches`. The aggregation command reads every `results/temporal_batch_*.csv` and checks duplicate cells; **delete old batch files before changing model parameters**. To extend to 30 replications, add starts 15,18,21,24,27, then reaggregate. Each paired replicate uses the same initial infection set, uniform transmission innovations, and nested missing-dyad masks across policies and observation settings.
-
-**Important assumptions:** Transmission hazard 0.060 per five-minute qualifying encounter, 25 initially hidden and four confirmed infections, daily recovery 0.12 and routine diagnosis 0.14 converted to five-minute probabilities, sensitivity 0.90, perfect specificity, instantaneous isolation after positive testing, no modeled transmission during the eight unrecorded nighttime hours, and fixed measured movement despite simulated isolation. These are not clinical estimates. No observed infection outcomes are in Haslemere. The three-day experiment targets infections during observation rather than long-run epidemic final size.
-
----
-
-## Existing static-network studies (retained for reproducibility)
-
-
-The earlier static-network experiment has a **factorized Bayesian SHCR filter**, **logistic infection-risk estimation from separate simulated epidemics**, and **budget-constrained one-step optimized testing**. It retains the original adaptive network heuristic and random, contact, and degree testing as four baseline methods. An additional filter-only optimizer is an ablation of risk estimation.
-
-**Main deliverables**
-
-- `report.tex` and `report.pdf`: paper with a **six-page main body** plus an expanded technical appendix, results, figures, references and reproducibility instructions.
-- `analysis.Rmd`: R Markdown companion that reads saved replicate files, checks fitted-risk diagnostics, and regenerates comparison tables/figures. (R wasn't installed during creation, so this notebook was reviewed but not knitted here.)
-- `index.html`: standalone project demonstration; open it alongside the `figures/` directory, or publish the whole folder.
-- `model_based_core.py`: mean-field filtering recursion, Bayesian evidence updates, fitted-risk features, optimizer, and matched simulator.
-- `fit_risk_model.py`: simulated training epidemics, trajectory-held-out validation, seven predictor coefficients, serialized fitted model.
-- `run_optimized_experiments.py`: six-policy SBM and Haslemere comparisons with matched seeds and checkpointing.
-- `create_model_based_assets.py` and `create_model_based_webpage.py`: results-to-report/page generation.
-- `test_model_based.py`: assertions for posterior normalization, belief updates, budget, and equivalence of earlier policy outcomes.
-- `results/optimized_*.csv`: executed **30 independent paired epidemics per network condition**; six SBM community-strength ratios and five observed-edge probabilities, plus Haslemere contact topology with five observation levels.
-- `results/risk_model_*.csv`, `models/risk_model.joblib`: fitted model, 90 synthetic training trajectories, 24 held-out synthetic trajectories.
-- The previous baseline simulation programs and outputs remain to permit complete replication of paired comparisons.
-
-## Run from a clean environment
-
-Python 3.10+ and the packages in `requirements.txt` are required. The original public **headerless** Haslemere proximity source file is now packaged: copy your `Kissler_DataS1.csv` from https://github.com/skissler/haslemere into `data/Kissler_DataS1.csv`. This is the **only external data input**; the ZIP contains the raw public CSV, saved simulated results, and fits.
-
-```bash
-python3 -m pip install -r requirements.txt
 python3 test_model_based.py
-# Refit individual-level risk estimator on simulated labeled trajectories
+
+# Refit the static-network risk estimator:
 python3 fit_risk_model.py --csv data/Kissler_DataS1.csv --train-reps 90 --valid-reps 24
-# Regenerate four original policy baselines with the matched evaluation seed
+
+# Generate matched baseline runs and then model-based comparisons:
 python3 run_structure_sensitivity.py --reps 30
 python3 run_haslemere_visibility.py --csv data/Kissler_DataS1.csv --reps 30
-# Add 2 optimization policies; reuse paired baseline run CSVs for speed
 python3 run_optimized_experiments.py --csv data/Kissler_DataS1.csv --reps 30
+
+# Regenerate paper tables and SBM figures:
 python3 create_model_based_assets.py
-python3 create_model_based_webpage.py
-pdflatex -interaction=nonstopmode report.tex
-pdflatex -interaction=nonstopmode report.tex
 ```
 
-To re-execute the optimizers from scratch after a changed model, delete `results/optimized_sbm_checkpoint.csv` and `results/optimized_haslemere_checkpoint.csv` first. These checkpoint files are not automatically tied to the contents of the fitted model or Python code, so clear them if you change the model or any policy implementation.
+**Checkpoint caution:** If you change model coefficients, simulation parameters, or policy code, first remove stale `results/optimized_sbm_checkpoint.csv` and `results/optimized_haslemere_checkpoint.csv`. The optimized comparison runner expects compatible baseline results, with the matching evaluation seed and settings. Its outputs include `results/optimized_sbm_*.csv`, `models/risk_model.joblib`, and `figures/optimized_community.png` / `figures/optimized_sbm_visibility.png`.
 
-The two original baseline files are generated by `run_structure_sensitivity.py` and `run_haslemere_visibility.py` with **the same** evaluation seed `2362026`, graph-generation uniforms, edge masks and individual epidemic innovations. The optimizer runner crossjoins those baseline rows with its own corresponding policies by replicate and network condition. `test_model_based.py` verifies baseline simulation equivalence. For a clean run, ensure these legacy baseline files are from the matching seed and settings; the optimized runner rejects mismatched seed values for its own run, but cannot independently authenticate externally replaced CSV files.
+### Supplementary: three-day measured-only Haslemere sensitivity (Appendix E)
 
-## Model and interpretation
+```bash
+python3 test_temporal_haslemere.py
 
-- Simulator parameters: transmission hazard `tau=0.055`, spontaneous diagnosis `delta=0.025`, recovery probability `gamma=0.12`, test sensitivity `0.90`, perfect specificity, zero reporting delay, five initial infections, 50 days. These describe **fixed experimental assumptions**, not parameters estimated from observed infections.
-- The filter updates individual `(S,H,C,R)` marginals after observed absence/presence of routine diagnoses and positive/negative test results, then predicts infection using observed neighbors' posterior hidden probabilities. It is a **mean-field approximation**, not an exact posterior over the joint disease process.
-- Risk estimation fits standardized L2-regularized logistic regression (`C=1`) on only **synthetic person-day labels**, with grouping by epidemic trajectory (90 train, 24 held-out). The filter's hidden-state log-odds are one predictor. The training data include separate epidemics on the Haslemere topology; thus Haslemere evaluation is not generalization to an entirely unseen network, but *is* tested on separate outbreak realizations.
-- On day `t`, the inferred value of testing `i` is `P(H_i) * 0.9 * (1-exp(-0.055)) * sum_j Aobs[i,j]*P(S_j)`. We choose the top 20 eligible individuals. This **exactly solves the additive one-day surrogate**, not the multi-day optimal control problem and not Huang et al.'s county-level Frank-Wolfe relaxation.
-- Network availability is manipulated separately from true transmission: `A` is the simulator's true adjacency, `Aobs` is its edge-deleted observed version. When missingness is 75%, only 25% of edges are visible to the policy.
-- The Haslemere **contact observations are real**, but all COVID-/disease-infection histories, tests and testing responses are simulated. Results therefore do not establish clinical benefits.
+# Refit the separate three-day risk model and evaluate 15 paired epidemics:
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python3 temporal_haslemere.py --train 60 --heldout 16 --reps 15
 
-## Reported findings (30 paired simulated epidemics per cell)
+# Or evaluate with the saved fitted three-day model:
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 python3 temporal_haslemere.py --skip-fit --reps 15
+```
 
-- On fully observed **SBM** networks at community ratio 1, final infected fraction: adaptive heuristic **35.0%**, fitted optimizer **32.6%**; at ratio 12, **30.4%** and **30.0%**. Both fitted-minus-heuristic paired 95% Monte Carlo intervals include zero.
-- On the **Haslemere** contact network at 100% edge visibility, heuristic **16.4%** versus fitted optimizer **16.1%**; at 25% visibility, heuristic **25.5%** versus fitted optimizer **25.0%**. There is no strong evidence from this experiment that the optimizer dominates the heuristic.
-- Held-out synthetic-label risk model AUC **0.736** and Brier score **0.0455**, versus filter-only AUC **0.691** and Brier score **0.0476**.
+Optional smaller batch runs are supported using `--skip-fit --batch-start 0 --batch-count 3` (then starts 3, 6, 9, and 12) followed by `--aggregate-batches`. Clear existing `results/temporal_batch_*.csv` files before combining runs generated with different settings. The three-day results are **not** interchangeable with the primary 50-day outcomes.
 
-**Project scope and standards:** This is a paired simulation-method comparison, not an empirical infection parameter estimation study or a proof of optimal epidemic control. Report main-body length stays below the 8-page guideline; additional technical details are placed in the appendix. 
+## Project files
+
+| Path | Purpose |
+| --- | --- |
+| `data/Kissler_DataS1.csv` | Public, headerless Haslemere proximity observations |
+| `extended_temporal_haslemere.py` | Main 50-day temporal network, SHCR simulations, fitting, and policy comparisons |
+| `temporal_haslemere.py` | Supplementary original three-day temporal experiment |
+| `model_based_core.py` | Static-network simulator, factorized filter, and testing-allocation methods |
+| `fit_risk_model.py` | Static-network fitted infection-risk model |
+| `run_structure_sensitivity.py`, `run_optimized_experiments.py` | Controlled SBM experiments and model-based comparisons |
+| `results/` | Saved per-replicate outcomes, contrasts, diagnostics, and LaTeX tables |
+| `models/` | Saved separately fitted risk models |
+| `figures/` | Paper figures and supplementary plots |
+| `analysis.Rmd` | Companion analysis of saved outputs |
+| `index.html` | Interactive project demonstration webpage |
+| `create_model_based_assets.py`, `create_extended_assets.py` | Regenerate figures and result tables |
+| `report.tex`, `references.bib` | LaTeX source and references in the project package |
+
+## Interpretation and limitations
+
+- **Simulation study, not a clinical effectiveness estimate.** Haslemere supplies observed contacts, while *all* disease states, diagnoses, testing results, and contacts after Day 3 are simulated.
+- **Short, nonrepresentative contact sample.** Only three days from 469 volunteers inform the temporal extension; unrecorded people and nights, new ties, and changing behavior are not modeled.
+- **Simplified disease progression.** The SHCR model assumes immediate infectiousness after infection, no latent exposed state, assumed rather than calibrated hazards, instantaneous test results, and no false-positive tests.
+- **Stylized missingness.** Dyads are removed independently at random from the policy's observations, rather than modeling systematic missing contacts or noisy retained measurements.
+- **Myopic optimization and limited simulation precision.** Additive expected-prevention scores ignore competing infectors, overlapping benefits, and downstream chains. The 12-replicate temporal comparisons especially warrant caution.
+
+**Main takeaway:** Better risk prediction and more detailed temporal weighting need not yield a uniformly better testing policy. Network completeness matters, but the value of sophisticated optimization relative to a simple adaptive heuristic depends on the simulation setting.
+
+## Data provenance and related work
+
+- Kissler et al. (2018), *Sparking The BBC Four Pandemic: Leveraging citizen science and mobile phones to model the spread of disease*. [Data repository](https://github.com/skissler/haslemere).
+- Firth et al. (2020), *Using a real-world network to model localized COVID-19 control strategies*. [DOI](https://doi.org/10.1038/s41591-020-1036-8).
+- Huang, Ke, and Jin (2022), *Allocation of COVID-19 Testing Budget on a Commute Network of Counties*. [arXiv](https://arxiv.org/abs/2110.04381).
+
+See the accompanying final course report for the full model specification, paired Monte Carlo contrasts, and appendices.

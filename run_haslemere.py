@@ -1,7 +1,5 @@
-"""Empirical-contact-network extension to STAT 236 screening study.
-
-Uses the REAL 2017 Haslemere proximity measurements as graph input, and simulates
-H/C/R infection states and interventions. Does NOT use observed COVID infections.
+"""Uses the REAL 2017 Haslemere proximity measurements as graph input, and simulates
+H/C/R infection states and interventions.
 
 Download source yourself once or invoke --download on a network-connected computer:
   python run_haslemere.py --download --reps 50

@@ -4,7 +4,6 @@ Observed day blocks 1-3 are preserved exactly. Days 4..days are independent draw
 from observed days {1,2,3}, sampled once per paired replicate and reused across
 all policy and contact-visibility conditions. All infection outcomes simulated.
 
-This code deliberately DOES NOT add an Exposed (E) state: S -> H is immediate.
 Only recorded daytime contacts permit transmission; nighttime diagnoses and
 recovery continue, but no nighttime transmission is simulated.
 """

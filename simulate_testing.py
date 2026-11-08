@@ -1,5 +1,4 @@
-"""STAT 236: network-aware screening simulation. Python 3 + numpy/pandas/matplotlib.
-
+"""
 Run: python simulate_testing.py --reps 50
 Outputs CSV summary, paired differences, and figures. Uses fixed network/innovation
 seeds across policies within a replicate for a paired design.
