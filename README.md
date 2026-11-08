@@ -4,8 +4,6 @@
 STAT 236 course project (Fall 2026)  
 **Authors:** Yinpeng Cai, Aniket Jain, Annie Liang, Zidan Luo
 
-[Project repository](https://github.com/annieliang111/STAT236Project)
-
 ## Overview
 
 Under a limited testing budget, **whom should we test, and when**, when infections are hidden and contact-network information is incomplete? This project studies how **community structure**, **missing observed contacts**, and **temporal contact history** influence network-aware testing allocation.
@@ -47,7 +45,7 @@ For incomplete observation, each existing network edge is retained for the testi
 
 ## Epidemic model and testing strategies
 
-All infections, diagnoses, screening results, and disease outcomes are **simulated**. We use four states: susceptible (`S`), hidden infectious (`H`), confirmed/isolated (`C`), and removed/recovered (`R`). There is **no exposed (`E`) state**: newly infected people immediately enter `H`, an explicit biological simplification. Positive screening tests immediately isolate detected hidden-infectious people, preventing their subsequent transmission.
+All infections, diagnoses, screening results, and disease outcomes are **simulated**. We use four states: susceptible (`S`), hidden infectious (`H`), confirmed/isolated (`C`), and removed/recovered (`R`). Positive screening tests immediately isolate detected hidden-infectious people, preventing their subsequent transmission.
 
 | Assumption | Static SBM | Extended temporal Haslemere |
 | --- | --- | --- |
