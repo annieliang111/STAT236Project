@@ -1,7 +1,6 @@
 # Network-Aware Testing Allocation for Infectious Disease Control Under Limited Resources
 
 **The Role of Community Structure and Incomplete Contact Information**  
-STAT 236 course project (Fall 2026)  
 **Authors:** Yinpeng Cai, Aniket Jain, Annie Liang, Zidan Luo
 
 ## Overview
